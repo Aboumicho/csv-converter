@@ -78,7 +78,13 @@ class CoordinateFrame:
         """
         self.prefix = prefix
         self.origin = pts["_Origin"]
-        self.z_axis = _normalize(_sub(pts["_Z"], self.origin))
+        raw_z = _normalize(_sub(pts["_Z"], self.origin))
+        # Dental convention: Z axis always points apically (into bone = toward
+        # lower absolute Z). If the _Z marker was placed coronally (positive Z
+        # component), flip the axis so all implants point the same direction.
+        if raw_z[2] > 0:
+            raw_z = tuple(-c for c in raw_z)
+        self.z_axis = raw_z
         self.x_axis = _normalize(_sub(pts["_X"], self.origin))
         self.y_axis = _normalize(_sub(pts["_Y"], self.origin))
 
