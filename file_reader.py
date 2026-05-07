@@ -78,13 +78,7 @@ class CoordinateFrame:
         """
         self.prefix = prefix
         self.origin = pts["_Origin"]
-        raw_z = _normalize(_sub(pts["_Z"], self.origin))
-        # Dental convention: Z axis always points apically (into bone = toward
-        # lower absolute Z). If the _Z marker was placed coronally (positive Z
-        # component), flip the axis so all implants point the same direction.
-        if raw_z[2] > 0:
-            raw_z = tuple(-c for c in raw_z)
-        self.z_axis = raw_z
+        self.z_axis = _normalize(_sub(pts["_Z"], self.origin))
         self.x_axis = _normalize(_sub(pts["_X"], self.origin))
         self.y_axis = _normalize(_sub(pts["_Y"], self.origin))
 
@@ -134,7 +128,35 @@ class TxtReader:
         for prefix, pts in groups.items():
             self._validate(prefix, pts)
             frames.append(CoordinateFrame(prefix, pts))
+        self._fix_flipped_axes(frames)
         return frames
+
+    # ----------------------------------------------------------
+    def _fix_flipped_axes(self, frames: list) -> None:
+        """
+        Within a group of frames (one .txt file = one jaw / one case),
+        compute the consensus Z direction as the sum of all Z axes.
+        Any individual frame whose Z axis opposes the consensus
+        (dot product < 0) is flipped. This corrects a single mis-placed
+        _Z marker without disturbing the group's natural direction
+        (upper jaw pointing one way, lower jaw the other).
+        """
+        if len(frames) < 2:
+            return
+
+        # Sum all z_axes to get a consensus direction vector (sign only matters)
+        cx = sum(f.z_axis[0] for f in frames)
+        cy = sum(f.z_axis[1] for f in frames)
+        cz = sum(f.z_axis[2] for f in frames)
+        consensus = (cx, cy, cz)
+
+        for f in frames:
+            if _dot(f.z_axis, consensus) < 0:
+                print(
+                    f"  [FIX] Prefix '{f.prefix}': Z axis opposed group "
+                    f"consensus - flipping to match."
+                )
+                f.z_axis = tuple(-c for c in f.z_axis)
 
     # ----------------------------------------------------------
     def _parse_lines(self) -> dict:
