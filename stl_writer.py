@@ -16,10 +16,10 @@ Public API
 """
 
 import math
-import os
-import struct
 
-from file_reader import CoordinateFrame, _normalize, _cross, _sub
+from vec3 import normalize as _normalize, cross as _cross, sub as _sub
+from stl_utils import write_binary_stl
+from csv_writer.file_reader import CoordinateFrame
 
 
 class STLWriter:
@@ -73,16 +73,7 @@ class STLWriter:
         for frame in self.frames:
             self._add_implant(frame.origin, frame.z_axis, frame.x_axis)
 
-        os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
-        with open(self.output_path, "wb") as fh:
-            fh.write(b"\x00" * 80)
-            fh.write(struct.pack("<I", len(self._tris)))
-            for normal, v1, v2, v3 in self._tris:
-                fh.write(struct.pack("<fff", *normal))
-                fh.write(struct.pack("<fff", *v1))
-                fh.write(struct.pack("<fff", *v2))
-                fh.write(struct.pack("<fff", *v3))
-                fh.write(b"\x00\x00")
+        write_binary_stl(self.output_path, self._tris)
 
         print(f"  [STL] -> {self.output_path}  ({len(self._tris)} triangles)")
         return self.output_path
