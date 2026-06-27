@@ -51,7 +51,6 @@ def _parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
-
 def main() -> None:
     args = _parse_args()
     DiscoveryPipeline(
