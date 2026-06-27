@@ -1,73 +1,63 @@
+"""
+main.py
+=======
+Entry point for ConcoLab - converts TransformedPoints ``.txt`` files into
+MicronMapper-compatible CSV files.
+
+Directory layout
+----------------
+  PROJECT_DIR/
+    txt_files/        <- drop .txt input files here
+    files/            <- generated .csv outputs (created automatically)
+    csv_writer/       <- conversion package
+    ui/               <- tkinter interface
+
+Usage
+-----
+  # Use current working directory as project root
+  python main.py
+
+  # Specify an explicit project directory
+  python main.py /path/to/project
+
+  # Override the camera serial written to the CSV footer
+  python main.py /path/to/project --camera 24902386
+"""
+
+import argparse
 import os
-import glob
 
-from file_reader import FileReader
-
-
-class ConversionPipeline:
-    """
-    Discovers all .txt files in the 'files' directory and converts each one
-    to CSV using FileReader.
-    """
-
-    def __init__(self):
-        """Initialize the pipeline with the fixed 'files' input directory."""
-        self.source_dir = "files"
-        self._txt_files: list[str] = []
-        self._results: list[str] = []
-
-    # ------------------------------------------------------------------
-    # Public interface
-    # ------------------------------------------------------------------
-
-    def run(self) -> None:
-        """Full pipeline: discover files → convert each one → report."""
-        self._discover()
-
-        if not self._txt_files:
-            print(f"[INFO] No .txt files found in '{self.source_dir}/'. Exiting.")
-            return
-
-        print(f"[INFO] Found {len(self._txt_files)} .txt file(s) to convert.\n")
-
-        for filepath in self._txt_files:
-            reader = FileReader(filepath)
-            output_path = reader.run()
-            self._results.append(output_path)
-
-        self._report()
-
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
-
-    def _discover(self) -> None:
-        """Collect all .txt files inside source_dir (non-recursive)."""
-        pattern = os.path.join(self.source_dir, "*.txt")
-        self._txt_files = sorted(glob.glob(pattern))
-
-    def _report(self) -> None:
-        """Print a summary of converted files."""
-        print(f"\n{'=' * 50}")
-        print(f"Conversion complete: {len(self._results)} file(s) saved.")
-        print(f"Output directory  : '{FileReader.OUTPUT_DIR}/'")
-        print("=" * 50)
-
-    # ------------------------------------------------------------------
-    # Dunder helpers
-    # ------------------------------------------------------------------
-
-    def __repr__(self) -> str:
-        return f"ConversionPipeline(source_dir={self.source_dir!r})"
+from csv_writer import DiscoveryPipeline, DEFAULT_CAMERA_SERIAL
 
 
-# ---------------------------------------------------------------------------
-# Entry-point
-# ---------------------------------------------------------------------------
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Convert TransformedPoints .txt files to MicronMapper CSV. "
+            "Reads from PROJECT_DIR/txt_files/ and writes to PROJECT_DIR/files/."
+        )
+    )
+    parser.add_argument(
+        "project_dir",
+        nargs="?",
+        default=os.getcwd(),
+        help="Root project directory (default: current working directory).",
+    )
+    parser.add_argument(
+        "--camera",
+        dest="camera_serial",
+        default=DEFAULT_CAMERA_SERIAL,
+        help=f"Camera serial number for CSV footer (default: {DEFAULT_CAMERA_SERIAL}).",
+    )
+    return parser.parse_args()
+
 
 def main() -> None:
-    pipeline = ConversionPipeline()
-    pipeline.run()
+    args = _parse_args()
+    DiscoveryPipeline(
+        project_dir=args.project_dir,
+        camera_serial=args.camera_serial,
+    ).run()
 
 
 if __name__ == "__main__":
