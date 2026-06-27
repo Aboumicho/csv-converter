@@ -1,2 +1,4 @@
 /files/*
 /converted/*
+__pycache__/
+*.pyc

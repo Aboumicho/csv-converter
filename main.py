@@ -26,6 +26,7 @@ Usage
 
 import argparse
 import os
+import sys
 
 from csv_writer import DiscoveryPipeline, DEFAULT_CAMERA_SERIAL
 
@@ -53,6 +54,11 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
+
+    if not os.path.isdir(args.project_dir):
+        print(f"[ERROR] Project directory does not exist: {args.project_dir!r}", file=sys.stderr)
+        sys.exit(1)
+
     DiscoveryPipeline(
         project_dir=args.project_dir,
         camera_serial=args.camera_serial,

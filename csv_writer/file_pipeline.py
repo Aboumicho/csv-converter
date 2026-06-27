@@ -52,6 +52,16 @@ class FilePipeline:
             Path to the written ``.csv`` file.
         """
         stem = os.path.splitext(os.path.basename(self.txt_path))[0]
+        stem = stem.replace(os.sep, "_").replace("..", "_")
+
+        # Ensure output stays inside the intended output directory
+        csv_candidate = os.path.join(self.output_dir, f"{stem}.csv")
+        if not os.path.realpath(csv_candidate).startswith(
+            os.path.realpath(self.output_dir) + os.sep
+        ):
+            raise ValueError(
+                f"Refusing to write outside output directory: {csv_candidate!r}"
+            )
 
         print(f"\n{'-' * 60}")
         print(f"File       : {os.path.basename(self.txt_path)}")
