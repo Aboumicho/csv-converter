@@ -36,12 +36,20 @@ class DiscoveryPipeline:
 
     # ----------------------------------------------------------
     def run(self) -> list:
-        """Scan for ``.txt`` files, process each one, print a summary."""
+        """
+        Scan for ``.txt`` files, process each one, print a summary.
+
+        Returns
+        -------
+        list[tuple]
+            Each entry is ``(txt_path, csv_path | None, exception | None)``.
+            The list is empty when no ``.txt`` files are found.
+        """
         txt_dir = os.path.join(self.project_dir, self.TXT_SUBDIR)
         files = sorted(glob.glob(os.path.join(txt_dir, "*.txt")))
 
         if not files:
-            print(f"[INFO] No .txt files found in '{txt_dir}'. Exiting.")
+            print(f"[WARN] No .txt files found in '{txt_dir}'.")
             return []
 
         print(f"Project dir   : {self.project_dir}")
@@ -59,11 +67,17 @@ class DiscoveryPipeline:
                 ).run()
                 results.append((txt_path, csv_path, None))
             except Exception as exc:
-                print(f"  [ERROR] {exc}")
+                print(
+                    f"  [ERROR] {os.path.basename(txt_path)}: {exc}"
+                )
                 results.append((txt_path, None, exc))
 
         self._print_summary(results)
         return results
+
+    def has_failures(self, results: list) -> bool:
+        """Return True if any file in *results* failed."""
+        return any(exc is not None for *_, exc in results)
 
     # ----------------------------------------------------------
     def _print_summary(self, results: list) -> None:

@@ -57,15 +57,40 @@ class MicronMapperCSVWriter:
         Returns
         -------
         str : path to the written file.
+
+        Raises
+        ------
+        ValueError
+            If *frames* is empty.
+        OSError
+            If the output directory cannot be created or the file cannot
+            be written.
         """
-        os.makedirs(os.path.dirname(self.output_path) or ".", exist_ok=True)
+        if not self.frames:
+            raise ValueError(
+                f"No frames to write \u2013 CSV output '{self.output_path}' "
+                f"skipped."
+            )
+
+        out_dir = os.path.dirname(self.output_path) or "."
+        try:
+            os.makedirs(out_dir, exist_ok=True)
+        except OSError as exc:
+            raise OSError(
+                f"Cannot create output directory '{out_dir}': {exc}"
+            ) from exc
 
         angle, pa, pb = max_divergence(self.frames)
 
-        with open(self.output_path, "w", newline="", encoding="utf-8") as fh:
-            self._write_data_rows(fh)
-            self._write_divergence(fh, angle, pa, pb)
-            self._write_metadata(fh)
+        try:
+            with open(self.output_path, "w", newline="", encoding="utf-8") as fh:
+                self._write_data_rows(fh)
+                self._write_divergence(fh, angle, pa, pb)
+                self._write_metadata(fh)
+        except OSError as exc:
+            raise OSError(
+                f"Failed to write CSV '{self.output_path}': {exc}"
+            ) from exc
 
         print(f"  [CSV] -> {self.output_path}")
         return self.output_path
