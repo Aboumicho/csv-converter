@@ -16,32 +16,7 @@ Whitespace-delimited rows, four per coordinate frame::
 A single file may contain several frames (different prefixes).
 """
 
-import math
-
-
-# ---------------------------------------------------------------------------
-# Vector helpers
-# ---------------------------------------------------------------------------
-
-def _sub(a, b):
-    return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
-
-
-def _dot(a, b):
-    return sum(x * y for x, y in zip(a, b))
-
-
-def _normalize(v):
-    mag = math.sqrt(sum(x * x for x in v))
-    if mag == 0:
-        raise ValueError("Zero-length vector - check Origin/axis points.")
-    return tuple(x / mag for x in v)
-
-
-def _angle_between_deg(n1, n2):
-    """Angle in degrees between two unit vectors."""
-    cos_theta = max(-1.0, min(1.0, _dot(n1, n2)))
-    return math.degrees(math.acos(cos_theta))
+from vec3 import sub as _sub, normalize as _normalize, angle_deg as _angle_between_deg
 
 
 # ---------------------------------------------------------------------------
