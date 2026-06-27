@@ -362,8 +362,14 @@ class TransformedPointsPipeline:
 
         # Derive a base name from the first input file
         base    = os.path.splitext(os.path.basename(self.input_paths[0]))[0]
+        base    = base.replace(os.sep, "_").replace("..", "_")
         csv_out = os.path.join(self.output_dir, f"{base}_MicronMapper.csv")
         stl_out = os.path.join(self.output_dir, f"{base}.stl")
+
+        # Ensure output stays inside the intended directory
+        abs_out = os.path.realpath(self.output_dir)
+        if not os.path.realpath(csv_out).startswith(abs_out + os.sep):
+            raise ValueError(f"Refusing to write outside output directory: {csv_out!r}")
 
         MicronMapperCSVWriter(
             frames,
@@ -387,15 +393,15 @@ class TransformedPointsPipeline:
 if __name__ == "__main__":
     import sys
 
-    # Default: process the uploaded file
-    inputs = sys.argv[1:] if len(sys.argv) > 1 else [
-        "/mnt/user-data/uploads/TransformedPoints_32.csv"
-    ]
+    if len(sys.argv) < 2:
+        print("Usage: python points_writer.py <input_csv> [input_csv ...]")
+        sys.exit(1)
+    inputs = sys.argv[1:]
 
     pipeline = TransformedPointsPipeline(
         input_paths=inputs,
-        output_dir="/home/claude/output",
-        camera_serial="00000000",   # ← replace with real camera serial if known
-        axis_length=10.0,           # ← length of axis arms in the STL (mm)
+        output_dir=os.environ.get("OUTPUT_DIR", "output"),
+        camera_serial=os.environ.get("CAMERA_SERIAL", "00000000"),
+        axis_length=float(os.environ.get("AXIS_LENGTH", "10.0")),
     )
     pipeline.run()
