@@ -15,8 +15,11 @@ import sys
 import tkinter as tk
 from tkinter import ttk
 
-# Allow running as a plain script (python ui/app.py) as well as a module.
-PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Allow running as a plain script, a module, or a PyInstaller .exe bundle.
+if getattr(sys, "frozen", False):
+    PROJECT_DIR = os.path.dirname(sys.executable)
+else:
+    PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_DIR not in sys.path:
     sys.path.insert(0, PROJECT_DIR)
 
