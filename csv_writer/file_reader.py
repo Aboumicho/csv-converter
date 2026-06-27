@@ -101,44 +101,91 @@ class TxtReader:
         -------
         list[CoordinateFrame]
             Frames in first-seen order.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the input file does not exist.
+        PermissionError
+            If the input file cannot be read.
+        ValueError
+            If all data lines are malformed and no points can be parsed.
         """
         # prefix -> {"Origin": (x,y,z), "X": ..., "Y": ..., "Z": ...}
         groups: dict[str, dict] = {}
         order: list[str] = []
+        skipped = 0
+        total_data_lines = 0
 
-        with open(self.filepath, "r", encoding="utf-8-sig") as fh:
+        try:
+            fh = open(self.filepath, "r", encoding="utf-8-sig")
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                f"Input file not found: '{self.filepath}'"
+            )
+        except PermissionError:
+            raise PermissionError(
+                f"Permission denied reading '{self.filepath}'"
+            )
+
+        with fh:
             for line in fh:
                 line = line.strip()
                 if not line:
                     continue
 
+                total_data_lines += 1
                 parts = line.split()
                 if len(parts) != 4:
                     print(f"[WARNING] Skipping malformed line: {line!r}")
+                    skipped += 1
                     continue
 
                 name, *coords = parts
                 if "_" not in name:
                     print(f"[WARNING] Skipping point without prefix: {name!r}")
+                    skipped += 1
                     continue
 
                 prefix, suffix = name.rsplit("_", 1)
                 if suffix not in self.SUFFIXES:
                     print(f"[WARNING] Unknown suffix in point: {name!r}")
+                    skipped += 1
                     continue
 
-                xyz = tuple(float(c) for c in coords)
+                try:
+                    xyz = tuple(float(c) for c in coords)
+                except ValueError:
+                    print(
+                        f"[WARNING] Non-numeric coordinates in: {line!r}"
+                    )
+                    skipped += 1
+                    continue
+
                 if prefix not in groups:
                     groups[prefix] = {}
                     order.append(prefix)
                 groups[prefix][suffix] = xyz
+
+        if total_data_lines > 0 and not groups:
+            raise ValueError(
+                f"All {total_data_lines} data line(s) in '{self.filepath}' "
+                f"were malformed \u2013 no valid points could be parsed."
+            )
+        if skipped:
+            print(
+                f"[WARNING] {self.filepath}: skipped {skipped} of "
+                f"{total_data_lines} data line(s)"
+            )
 
         frames: list[CoordinateFrame] = []
         for prefix in order:
             data = groups[prefix]
             missing = [s for s in self.SUFFIXES if s not in data]
             if missing:
-                print(f"[WARNING] Frame {prefix!r} missing {missing}; skipping.")
+                print(
+                    f"[WARNING] Frame {prefix!r} missing {missing}; skipping."
+                )
                 continue
             frames.append(
                 CoordinateFrame(

@@ -61,18 +61,68 @@ class TransformedPointsReader:
     def __init__(self, filepath: str):
         self.filepath = filepath
 
+    REQUIRED_COLUMNS = ("Point", "X", "Y", "Z")
+
     def read(self) -> dict:
         """
         Returns dict with keys 'origin', 'x', 'y', 'z' — each a (X,Y,Z) tuple,
         plus 'prefix' (the common part before _Origin/_X/_Y/_Z).
+
+        Raises
+        ------
+        FileNotFoundError / PermissionError
+            If the file cannot be opened.
+        ValueError
+            If required columns are missing, coordinates are non-numeric,
+            or no prefix/_Origin/_X/_Y/_Z rows can be detected.
         """
+        try:
+            fh = open(self.filepath, newline="", encoding="utf-8-sig")
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                f"Input file not found: '{self.filepath}'"
+            )
+        except PermissionError:
+            raise PermissionError(
+                f"Permission denied reading '{self.filepath}'"
+            )
+
         rows = {}
-        with open(self.filepath, newline="", encoding="utf-8-sig") as fh:
+        with fh:
             reader = csv.DictReader(fh)
-            for row in reader:
+            if reader.fieldnames is None:
+                raise ValueError(
+                    f"'{self.filepath}' appears to be empty \u2013 "
+                    f"expected a CSV with columns {self.REQUIRED_COLUMNS}."
+                )
+            missing_cols = [
+                c for c in self.REQUIRED_COLUMNS
+                if c not in reader.fieldnames
+            ]
+            if missing_cols:
+                raise ValueError(
+                    f"'{self.filepath}' is missing required column(s) "
+                    f"{missing_cols}. Found: {reader.fieldnames}"
+                )
+            for lineno, row in enumerate(reader, 2):
                 name = row["Point"].strip()
-                xyz  = (float(row["X"]), float(row["Y"]), float(row["Z"]))
+                try:
+                    xyz = (
+                        float(row["X"]),
+                        float(row["Y"]),
+                        float(row["Z"]),
+                    )
+                except (ValueError, TypeError) as exc:
+                    raise ValueError(
+                        f"'{self.filepath}' line {lineno}: non-numeric "
+                        f"coordinates for point '{name}': {exc}"
+                    ) from exc
                 rows[name] = xyz
+
+        if not rows:
+            raise ValueError(
+                f"'{self.filepath}' contains no data rows."
+            )
 
         # Detect prefix (anything before the last '_' segment)
         prefix = None
@@ -86,14 +136,35 @@ class TransformedPointsReader:
                 break
 
         if prefix is None:
-            raise ValueError("Cannot detect prefix — expected rows ending in _Origin/_X/_Y/_Z.")
+            raise ValueError(
+                f"Cannot detect prefix in '{self.filepath}' \u2013 expected "
+                f"rows ending in _Origin/_X/_Y/_Z. "
+                f"Got: {list(rows.keys())}"
+            )
+
+        expected_keys = {
+            "origin": f"{prefix}_Origin",
+            "x": f"{prefix}_X",
+            "y": f"{prefix}_Y",
+            "z": f"{prefix}_Z",
+        }
+        missing_rows = [
+            label for label, key in expected_keys.items()
+            if key not in rows
+        ]
+        if missing_rows:
+            raise ValueError(
+                f"Prefix '{prefix}' in '{self.filepath}' is missing "
+                f"required row(s): "
+                f"{[expected_keys[m] for m in missing_rows]}"
+            )
 
         return {
             "prefix":  prefix,
-            "origin":  rows[f"{prefix}_Origin"],
-            "x":       rows[f"{prefix}_X"],
-            "y":       rows[f"{prefix}_Y"],
-            "z":       rows[f"{prefix}_Z"],
+            "origin":  rows[expected_keys["origin"]],
+            "x":       rows[expected_keys["x"]],
+            "y":       rows[expected_keys["y"]],
+            "z":       rows[expected_keys["z"]],
         }
 
 
@@ -147,41 +218,63 @@ class MicronMapperCSVWriter:
 
     # ------------------------------------------------------------------
     def write(self) -> str:
-        os.makedirs(os.path.dirname(self.output_path) or ".", exist_ok=True)
+        if not self.frames:
+            raise ValueError(
+                f"No frames to write \u2013 CSV output "
+                f"'{self.output_path}' skipped."
+            )
 
-        with open(self.output_path, "w", newline="", encoding="utf-8") as fh:
-            for frame in self.frames:
-                ox, oy, oz   = frame.origin
-                nx, ny, nz   = frame.z_axis   # normal (Z axis)
-                tx, ty, tz   = frame.x_axis   # tangent (X axis)
+        out_dir = os.path.dirname(self.output_path) or "."
+        try:
+            os.makedirs(out_dir, exist_ok=True)
+        except OSError as exc:
+            raise OSError(
+                f"Cannot create output directory '{out_dir}': {exc}"
+            ) from exc
+
+        try:
+            with open(self.output_path, "w", newline="", encoding="utf-8") as fh:
+                for frame in self.frames:
+                    ox, oy, oz   = frame.origin
+                    nx, ny, nz   = frame.z_axis   # normal (Z axis)
+                    tx, ty, tz   = frame.x_axis   # tangent (X axis)
+                    fh.write(
+                        f"{frame.prefix},"
+                        f" {ox:.5f}, {oy:.5f}, {oz:.5f},"
+                        f"{nx:.6f},{ny:.6f},{nz:.6f},"
+                        f"{tx:.6f}, {ty:.6f}, {tz:.6f}\r\n"
+                    )
+
+                fh.write("\r\n")
+
+                if len(self.frames) >= 2:
+                    angle = _angle_between_deg(
+                        self.frames[0].z_axis, self.frames[-1].z_axis
+                    )
+                    fh.write(
+                        f"Max divergence angle: "
+                        f"{self.frames[0].prefix}-"
+                        f"{self.frames[-1].prefix} "
+                        f"{angle:.1f} deg\r\n"
+                    )
+                else:
+                    fh.write("Max divergence angle: N/A\r\n")
+
+                fh.write("\r\n")
+                now_str = datetime.now().strftime(
+                    "%A, %B %d, %Y %I:%M:%S %p"
+                )
                 fh.write(
-                    f"{frame.prefix},"
-                    f" {ox:.5f}, {oy:.5f}, {oz:.5f},"
-                    f"{nx:.6f},{ny:.6f},{nz:.6f},"
-                    f"{tx:.6f}, {ty:.6f}, {tz:.6f}\r\n"
+                    f"Application:, {self.application},"
+                    f"   now {now_str}\r\n"
                 )
+                fh.write(f"Camera:, {self.camera}\r\n")
+        except OSError as exc:
+            raise OSError(
+                f"Failed to write CSV '{self.output_path}': {exc}"
+            ) from exc
 
-            fh.write("\r\n")
-
-            # Max divergence angle (between first and last frame normals)
-            if len(self.frames) >= 2:
-                angle = _angle_between_deg(
-                    self.frames[0].z_axis, self.frames[-1].z_axis
-                )
-                fh.write(
-                    f"Max divergence angle: "
-                    f"{self.frames[0].prefix}-{self.frames[-1].prefix} "
-                    f"{angle:.1f} deg\r\n"
-                )
-            else:
-                fh.write("Max divergence angle: N/A\r\n")
-
-            fh.write("\r\n")
-            now_str = datetime.now().strftime("%A, %B %d, %Y %I:%M:%S %p")
-            fh.write(f"Application:, {self.application},   now {now_str}\r\n")
-            fh.write(f"Camera:, {self.camera}\r\n")
-
-        print(f"[OK] CSV  → '{self.output_path}'")
+        print(f"[OK] CSV  \u2192 '{self.output_path}'")
         return self.output_path
 
 
@@ -213,24 +306,41 @@ class STLWriter:
 
     # ------------------------------------------------------------------
     def write(self) -> str:
+        if not self.frames:
+            raise ValueError(
+                f"No frames to write \u2013 STL output "
+                f"'{self.output_path}' skipped."
+            )
+
         self._triangles.clear()
         for frame in self.frames:
             self._add_frame_geometry(frame)
 
-        os.makedirs(os.path.dirname(self.output_path) or ".", exist_ok=True)
+        out_dir = os.path.dirname(self.output_path) or "."
+        try:
+            os.makedirs(out_dir, exist_ok=True)
+        except OSError as exc:
+            raise OSError(
+                f"Cannot create output directory '{out_dir}': {exc}"
+            ) from exc
 
-        with open(self.output_path, "wb") as fh:
-            header = b"\x00" * 80
-            fh.write(header)
-            fh.write(struct.pack("<I", len(self._triangles)))
-            for normal, v1, v2, v3 in self._triangles:
-                fh.write(struct.pack("<fff", *normal))
-                fh.write(struct.pack("<fff", *v1))
-                fh.write(struct.pack("<fff", *v2))
-                fh.write(struct.pack("<fff", *v3))
-                fh.write(b"\x00\x00")          # attribute byte count
+        try:
+            with open(self.output_path, "wb") as fh:
+                header = b"\x00" * 80
+                fh.write(header)
+                fh.write(struct.pack("<I", len(self._triangles)))
+                for normal, v1, v2, v3 in self._triangles:
+                    fh.write(struct.pack("<fff", *normal))
+                    fh.write(struct.pack("<fff", *v1))
+                    fh.write(struct.pack("<fff", *v2))
+                    fh.write(struct.pack("<fff", *v3))
+                    fh.write(b"\x00\x00")          # attribute byte count
+        except OSError as exc:
+            raise OSError(
+                f"Failed to write STL '{self.output_path}': {exc}"
+            ) from exc
 
-        print(f"[OK] STL  → '{self.output_path}' ({len(self._triangles)} triangles)")
+        print(f"[OK] STL  \u2192 '{self.output_path}' ({len(self._triangles)} triangles)")
         return self.output_path
 
     # ------------------------------------------------------------------
@@ -348,19 +458,38 @@ class TransformedPointsPipeline:
         self.axis_length   = axis_length
 
     def run(self):
-        frames = []
-        for path in self.input_paths:
-            reader = TransformedPointsReader(path)
-            data   = reader.read()
-            frame  = CoordinateFrame(data)
-            frames.append(frame)
-            print(f"[READ] {path}")
-            print(f"       prefix  = {frame.prefix}")
-            print(f"       origin  = {frame.origin}")
-            print(f"       Z-axis  = {frame.z_axis}")
-            print(f"       X-axis  = {frame.x_axis}")
+        if not self.input_paths:
+            raise ValueError("No input file paths provided to the pipeline.")
 
-        # Derive a base name from the first input file
+        frames = []
+        errors = []
+        for path in self.input_paths:
+            try:
+                reader = TransformedPointsReader(path)
+                data   = reader.read()
+                frame  = CoordinateFrame(data)
+                frames.append(frame)
+                print(f"[READ] {path}")
+                print(f"       prefix  = {frame.prefix}")
+                print(f"       origin  = {frame.origin}")
+                print(f"       Z-axis  = {frame.z_axis}")
+                print(f"       X-axis  = {frame.x_axis}")
+            except Exception as exc:
+                print(f"[ERROR] Failed to read '{path}': {exc}")
+                errors.append((path, exc))
+
+        if not frames:
+            raise RuntimeError(
+                f"All {len(self.input_paths)} input file(s) failed to "
+                f"load. Errors: {errors}"
+            )
+
+        if errors:
+            print(
+                f"[WARN] {len(errors)} of {len(self.input_paths)} input "
+                f"file(s) failed; continuing with {len(frames)} frame(s)."
+            )
+
         base    = os.path.splitext(os.path.basename(self.input_paths[0]))[0]
         csv_out = os.path.join(self.output_dir, f"{base}_MicronMapper.csv")
         stl_out = os.path.join(self.output_dir, f"{base}.stl")

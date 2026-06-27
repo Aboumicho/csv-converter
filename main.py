@@ -26,6 +26,7 @@ Usage
 
 import argparse
 import os
+import sys
 
 from csv_writer import DiscoveryPipeline, DEFAULT_CAMERA_SERIAL
 
@@ -53,10 +54,13 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
-    DiscoveryPipeline(
+    pipeline = DiscoveryPipeline(
         project_dir=args.project_dir,
         camera_serial=args.camera_serial,
-    ).run()
+    )
+    results = pipeline.run()
+    if pipeline.has_failures(results):
+        sys.exit(1)
 
 
 if __name__ == "__main__":

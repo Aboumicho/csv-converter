@@ -69,20 +69,49 @@ class STLWriter:
     # ------------------------------------------------------------------ #
 
     def write(self) -> str:
+        """
+        Build implant geometry for every frame and write a binary STL.
+
+        Raises
+        ------
+        ValueError
+            If *frames* is empty.
+        OSError
+            If the output directory cannot be created or the file cannot
+            be written.
+        """
+        if not self.frames:
+            raise ValueError(
+                f"No frames to write \u2013 STL output '{self.output_path}' "
+                f"skipped."
+            )
+
         self._tris.clear()
         for frame in self.frames:
             self._add_implant(frame.origin, frame.z_axis, frame.x_axis)
 
-        os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
-        with open(self.output_path, "wb") as fh:
-            fh.write(b"\x00" * 80)
-            fh.write(struct.pack("<I", len(self._tris)))
-            for normal, v1, v2, v3 in self._tris:
-                fh.write(struct.pack("<fff", *normal))
-                fh.write(struct.pack("<fff", *v1))
-                fh.write(struct.pack("<fff", *v2))
-                fh.write(struct.pack("<fff", *v3))
-                fh.write(b"\x00\x00")
+        out_dir = os.path.dirname(self.output_path)
+        try:
+            os.makedirs(out_dir, exist_ok=True)
+        except OSError as exc:
+            raise OSError(
+                f"Cannot create output directory '{out_dir}': {exc}"
+            ) from exc
+
+        try:
+            with open(self.output_path, "wb") as fh:
+                fh.write(b"\x00" * 80)
+                fh.write(struct.pack("<I", len(self._tris)))
+                for normal, v1, v2, v3 in self._tris:
+                    fh.write(struct.pack("<fff", *normal))
+                    fh.write(struct.pack("<fff", *v1))
+                    fh.write(struct.pack("<fff", *v2))
+                    fh.write(struct.pack("<fff", *v3))
+                    fh.write(b"\x00\x00")
+        except OSError as exc:
+            raise OSError(
+                f"Failed to write STL '{self.output_path}': {exc}"
+            ) from exc
 
         print(f"  [STL] -> {self.output_path}  ({len(self._tris)} triangles)")
         return self.output_path
